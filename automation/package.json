@@ -1,0 +1,19 @@
+{
+  "name": "gcp-infra-automation",
+  "version": "1.0.0",
+  "description": "Pulumi Automation API - programmatic stack operations",
+  "main": "deploy.js",
+  "scripts": {
+    "deploy": "ts-node deploy.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pulumi/pulumi": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.0"
+  }
+}

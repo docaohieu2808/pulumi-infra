@@ -1,0 +1,7 @@
+node_modules/
+.pulumi/
+Pulumi.*.yaml
+!Pulumi.yaml
+*.js
+*.d.ts
+dist/

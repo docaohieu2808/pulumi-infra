@@ -1,0 +1,19 @@
+{
+  "name": "pulumi-provider-custom-gcp-ext",
+  "version": "0.1.0",
+  "description": "Custom Pulumi provider skeleton with CRUD operations (MAX level)",
+  "main": "provider.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "serve": "ts-node provider.ts"
+  },
+  "dependencies": {
+    "@pulumi/pulumi": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.0"
+  }
+}

@@ -1,0 +1,10 @@
+name: gcp-infra
+description: GCP infrastructure - L1/L2
+runtime:
+  name: nodejs
+  options:
+    typescript: true
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: ""
