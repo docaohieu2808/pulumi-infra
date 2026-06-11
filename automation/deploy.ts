@@ -19,7 +19,15 @@ import {
   PreviewResult,
 } from "@pulumi/pulumi/automation";
 
-const GCP_PROJECT = process.env.GCP_PROJECT ?? "iac-devops-484714";
+// GCP_PROJECT must be set via env var — no fallback to prevent accidental deploys
+const GCP_PROJECT = (() => {
+  const p = process.env.GCP_PROJECT;
+  if (!p) {
+    console.error("[automation] Error: GCP_PROJECT env var is required");
+    process.exit(1);
+  }
+  return p;
+})();
 const GCP_REGION = process.env.GCP_REGION ?? "us-central1";
 const INFRA_DIR = path.resolve(__dirname, "../infra");
 
