@@ -98,6 +98,7 @@ jobs:
           for d in infra policy automation violating-example; do (cd "$d" && npm ci); done
       - name: Local file backend
         run: |
+          mkdir -p "$RUNNER_TEMP/pulumi-state"
           pulumi login "file://$RUNNER_TEMP/pulumi-state"
           pulumi version
       - name: Preview the infra with the policy pack (must pass)
