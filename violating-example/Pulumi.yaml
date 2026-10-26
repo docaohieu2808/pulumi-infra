@@ -1,0 +1,6 @@
+name: violating-example
+description: Deliberately breaks the CrossGuard policies; CI requires `pulumi preview --policy-pack ../policy` to REJECT it
+runtime:
+  name: nodejs
+  options:
+    typescript: true

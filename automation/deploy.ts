@@ -7,8 +7,11 @@
  *   ts-node deploy.ts destroy [stack]
  *   ts-node deploy.ts preview [stack]
  *   ts-node deploy.ts outputs [stack]
+ *
+ * Env: GCP_PROJECT (required), GCP_REGION, POLICY_PACK_DIR (enforce the CrossGuard pack, e.g. ../policy).
  */
 
+import * as fs from "fs";
 import * as path from "path";
 import {
   LocalWorkspace,
@@ -30,6 +33,8 @@ const GCP_PROJECT = (() => {
 })();
 const GCP_REGION = process.env.GCP_REGION ?? "us-central1";
 const INFRA_DIR = path.resolve(__dirname, "../infra");
+// Optional: run the CrossGuard policy pack (a directory containing PulumiPolicy.yaml) during preview/up.
+const POLICY_PACKS = process.env.POLICY_PACK_DIR ? [path.resolve(process.env.POLICY_PACK_DIR)] : [];
 
 // Stack config per environment
 const ENV_CONFIGS: Record<string, Record<string, string>> = {
@@ -59,6 +64,10 @@ const ENV_CONFIGS: Record<string, Record<string, string>> = {
 async function getOrCreateStack(stackName: string): Promise<Stack> {
   console.log(`[automation] Initializing stack: ${stackName}`);
 
+  if (!fs.existsSync(path.join(INFRA_DIR, "node_modules"))) {
+    throw new Error(`Dependencies missing: run "npm ci" in ${INFRA_DIR} first`);
+  }
+
   const stack = await LocalWorkspace.createOrSelectStack({
     stackName,
     workDir: INFRA_DIR,
@@ -73,10 +82,8 @@ async function getOrCreateStack(stackName: string): Promise<Stack> {
     await stack.setConfig(key, { value });
   }
 
-  // Install dependencies if needed
-  console.log("[automation] Installing npm dependencies...");
-  await stack.workspace.installPlugin("gcp", "v8.0.0");
-
+  // The Pulumi CLI downloads the gcp provider plugin by itself, at the version the SDK in infra/package.json
+  // asks for. It does not run `npm install`, so fail early with a clear message instead.
   return stack;
 }
 
@@ -85,6 +92,7 @@ async function runPreview(stackName: string): Promise<void> {
 
   console.log("[automation] Running preview...");
   const result: PreviewResult = await stack.preview({
+    policyPacks: POLICY_PACKS,
     onOutput: (msg) => process.stdout.write(msg),
   });
 
@@ -97,6 +105,7 @@ async function runUp(stackName: string): Promise<void> {
 
   console.log("[automation] Running up (deploy)...");
   const result: UpResult = await stack.up({
+    policyPacks: POLICY_PACKS,
     onOutput: (msg) => process.stdout.write(msg),
   });
 

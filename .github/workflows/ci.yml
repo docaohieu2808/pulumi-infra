@@ -1,0 +1,130 @@
+# Proves every level of the repo works without a cloud account, on every push and once a week (so a new Pulumi,
+# provider or Node release that breaks it shows up here):
+# - lint:    actionlint, and every action is pinned to a real commit SHA;
+# - test:    per package `npm ci`, `tsc --noEmit` and the unit tests (Pulumi mocks, policy rules, provider lifecycle);
+# - preview: the real Pulumi CLI against a local file backend with a dummy GCP token. `pulumi preview` computes the
+#            plan offline, so the infra program, the Automation API script and the CrossGuard policy pack all run for
+#            real; a deliberately non-compliant program must be REJECTED by the policy pack.
+# `pulumi up` is not run: it needs a real GCP project.
+name: ci
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "23 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  PULUMI_VERSION: "3.272.0"
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "$ACTIONLINT_VERSION"
+          ./actionlint -color
+      - name: Every action is pinned to a commit SHA that exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # An annotated tag object's SHA looks like a commit SHA but fails when a job runs, so ask the API.
+          refs=$(grep -rhE '^[[:space:]]*(- )?uses: *[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@' .github \
+            | sed -E 's/^[[:space:]]*(- )?uses: *//; s/[[:space:]].*$//' | sort -u)
+          status=0
+          while IFS=@ read -r ref sha; do
+            repo=$(echo "$ref" | cut -d/ -f1-2)
+            if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "FAIL $ref@$sha is not pinned to a SHA"; status=1
+            elif gh api "repos/$repo/commits/$sha" --jq .sha >/dev/null 2>&1; then echo "ok   $ref@$sha"
+            else echo "FAIL $ref@$sha is not a commit"; status=1; fi
+          done <<< "$refs"
+          exit "$status"
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [infra, policy, automation, custom-provider, violating-example]
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test --if-present
+
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PULUMI_CONFIG_PASSPHRASE: ""
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      # Dummy token: the provider only needs *a* credential to configure itself; preview never calls the API
+      # for resources it plans to create (it logs one harmless "failed to list regions" warning).
+      GOOGLE_OAUTH_ACCESS_TOKEN: ci-dummy-token
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        with:
+          pulumi-version: ${{ env.PULUMI_VERSION }}
+      - name: Install dependencies
+        run: |
+          for d in infra policy automation violating-example; do (cd "$d" && npm ci); done
+      - name: Local file backend
+        run: |
+          pulumi login "file://$RUNNER_TEMP/pulumi-state"
+          pulumi version
+      - name: Preview the infra with the policy pack (must pass)
+        working-directory: infra
+        run: |
+          pulumi stack init ci
+          pulumi config set gcp:project ci-demo-project
+          pulumi preview --non-interactive --policy-pack ../policy | tee "$RUNNER_TEMP/preview.log"
+          grep -q "gcp-infra-policies@v1.0.0" "$RUNNER_TEMP/preview.log"
+          grep -q "11 to create" "$RUNNER_TEMP/preview.log"
+      - name: Preview through the Automation API (policy pack enforced)
+        working-directory: automation
+        env:
+          GCP_PROJECT: ci-demo-project
+          POLICY_PACK_DIR: ../policy
+        run: npx ts-node deploy.ts preview dev
+      - name: A non-compliant program must be rejected by the policy pack
+        working-directory: violating-example
+        run: |
+          pulumi stack init ci
+          pulumi config set gcp:project ci-demo-project
+          if pulumi preview --non-interactive --policy-pack ../policy > "$RUNNER_TEMP/violating.log" 2>&1; then
+            cat "$RUNNER_TEMP/violating.log"
+            echo "::error::policy pack accepted a program that must be rejected"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/violating.log"
+          for policy in no-public-ip-without-approval require-resource-labels no-public-bucket-access; do
+            grep -q "\[mandatory\]  $policy" "$RUNNER_TEMP/violating.log" || { echo "::error::$policy did not fire"; exit 1; }
+          done

@@ -2,12 +2,14 @@
   "compilerOptions": {
     "strict": true,
     "outDir": "bin",
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "commonjs",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "types": ["node"],
     "sourceMap": true,
     "esModuleInterop": true,
     "skipLibCheck": true
   },
+  "include": ["*.ts", "tests/*.ts"],
   "exclude": ["node_modules", "bin"]
 }

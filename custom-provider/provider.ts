@@ -1,8 +1,8 @@
 /**
- * provider.ts — Custom Pulumi Provider Skeleton (MAX level)
+ * provider.ts — Custom Pulumi dynamic provider (MAX level)
  *
  * Implements a dynamic provider that manages a hypothetical "GcpTagPolicy"
- * resource — a custom organization tag policy not natively in @pulumi/gcp.
+ * resource. It talks to an in-memory fake API (see InMemoryTagPolicyApi); swap that for HTTP calls to go live.
  *
  * Pattern: pulumi.dynamic.Resource + pulumi.dynamic.ResourceProvider
  *
@@ -31,7 +31,7 @@ export interface GcpTagPolicyInputs {
 }
 
 // Properties stored in state after create (includes computed fields)
-interface GcpTagPolicyState {
+export interface GcpTagPolicyState {
   parent: string;
   tagKeyShortName: string;
   allowedValues: string[];
@@ -42,42 +42,46 @@ interface GcpTagPolicyState {
   updateTime: string;
 }
 
-// ─── Simulated API Client ─────────────────────────────────────────────────────
+// ─── In-memory API client ─────────────────────────────────────────────────────
 
-/** Simulates calls to a REST API (replace with actual GCP Tag API calls). */
-class TagPolicyApiClient {
-  private readonly baseUrl = "https://cloudresourcemanager.googleapis.com/v3";
+/**
+ * Stands in for the real REST API (the Cloud Resource Manager v3 tagKeys API). It keeps resources in memory so the
+ * provider's create/read/update/delete lifecycle is real and testable without credentials. To manage a real API,
+ * replace the bodies of these four methods with HTTP calls (e.g. with google-auth-library); nothing else changes.
+ */
+export class InMemoryTagPolicyApi {
+  private readonly store = new Map<string, GcpTagPolicyState>();
+  private seq = 0;
 
   async create(input: GcpTagPolicyState): Promise<{ id: string; createTime: string }> {
-    // TODO: replace with actual HTTP call using google-auth-library
-    pulumi.log.info(`[custom-provider] CREATE tag key: ${input.tagKeyShortName} on ${input.parent}`);
-    const id = `tagKeys/${input.parent.replace("/", "-")}-${input.tagKeyShortName}-${Date.now()}`;
-    return { id, createTime: new Date().toISOString() };
+    const id = `tagKeys/${++this.seq}`;
+    const createTime = new Date().toISOString();
+    this.store.set(id, { ...input, tagKeyId: id, createTime, updateTime: createTime });
+    return { id, createTime };
   }
 
-  async read(id: string): Promise<GcpTagPolicyState | null> {
-    pulumi.log.info(`[custom-provider] READ tag key: ${id}`);
-    // TODO: GET ${this.baseUrl}/${id}
-    return null; // null means resource not found (triggers replacement)
+  async read(id: string): Promise<GcpTagPolicyState | undefined> {
+    return this.store.get(id);
   }
 
   async update(id: string, patch: Partial<GcpTagPolicyState>): Promise<{ updateTime: string }> {
-    pulumi.log.info(`[custom-provider] UPDATE tag key: ${id}`);
-    // TODO: PATCH ${this.baseUrl}/${id}
-    return { updateTime: new Date().toISOString() };
+    const current = this.store.get(id);
+    if (!current) throw new Error(`tag key ${id} not found`);
+    const updateTime = new Date().toISOString();
+    this.store.set(id, { ...current, ...patch, updateTime });
+    return { updateTime };
   }
 
   async delete(id: string): Promise<void> {
-    pulumi.log.info(`[custom-provider] DELETE tag key: ${id}`);
-    // TODO: DELETE ${this.baseUrl}/${id}
+    this.store.delete(id);
   }
 }
 
-const apiClient = new TagPolicyApiClient();
+export const apiClient = new InMemoryTagPolicyApi();
 
 // ─── Dynamic Resource Provider ────────────────────────────────────────────────
 
-const gcpTagPolicyProvider: pulumi.dynamic.ResourceProvider = {
+export const gcpTagPolicyProvider: pulumi.dynamic.ResourceProvider = {
   /**
    * check: validate inputs before create or update.
    * Returns { inputs } if valid, or throws with failures list.
@@ -160,8 +164,8 @@ const gcpTagPolicyProvider: pulumi.dynamic.ResourceProvider = {
   async read(id: string, props: GcpTagPolicyState): Promise<pulumi.dynamic.ReadResult> {
     const state = await apiClient.read(id);
     if (!state) {
-      // Resource gone externally — return empty to signal deletion
-      return { id, props: {} };
+      // Resource gone externally — an undefined id tells Pulumi to drop it from state
+      return { id: undefined, props: undefined };
     }
     return { id, props: state };
   },

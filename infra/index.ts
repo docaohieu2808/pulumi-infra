@@ -22,20 +22,16 @@ const network = new GcpNetwork("main", {
   cidrRange: "10.0.0.0/24",
 });
 
-// --- L2: Compute component (uses network output via stack reference pattern) ---
-const compute = new GcpCompute(
-  "app",
-  {
-    project,
-    zone,
-    environment,
-    machineType,
-    subnetId: network.subnetId,
-    instanceCount,
-    diskSizeGb: 20,
-  },
-  { dependsOn: [network.network, network.subnet] }
-);
+// --- L2: Compute component (consumes the network component's output; Pulumi derives the dependency) ---
+const compute = new GcpCompute("app", {
+  project,
+  zone,
+  environment,
+  machineType,
+  subnetId: network.subnetId,
+  instanceCount,
+  diskSizeGb: 20,
+});
 
 // --- L2: Storage component ---
 const storage = new GcpStorage("artifacts", {

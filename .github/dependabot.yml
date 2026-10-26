@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directories:
+      - /infra
+      - /policy
+      - /automation
+      - /custom-provider
+      - /violating-example
+    schedule:
+      interval: weekly
+    groups:
+      pulumi:
+        patterns: ["@pulumi/*"]

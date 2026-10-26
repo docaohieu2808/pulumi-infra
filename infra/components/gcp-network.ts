@@ -9,7 +9,8 @@ export interface GcpNetworkArgs {
 }
 
 /**
- * GcpNetwork: reusable ComponentResource that provisions a VPC + subnet.
+ * GcpNetwork: reusable ComponentResource that provisions a VPC + subnet, a Cloud NAT (the VMs have no external
+ * IP, so NAT is how they reach package mirrors) and a firewall rule allowing SSH only from Google's IAP range.
  * L2 pattern: encapsulates related resources behind a clean interface.
  */
 export class GcpNetwork extends pulumi.ComponentResource {
@@ -47,6 +48,44 @@ export class GcpNetwork extends pulumi.ComponentResource {
         network: this.network.selfLink,
         ipCidrRange: args.cidrRange ?? "10.0.0.0/24",
         privateIpGoogleAccess: true,
+      },
+      childOpts
+    );
+
+    const router = new gcp.compute.Router(
+      `${name}-router`,
+      {
+        name: pulumi.interpolate`${args.environment}-${name}-router`,
+        project: args.project,
+        region: args.region,
+        network: this.network.id,
+      },
+      childOpts
+    );
+
+    new gcp.compute.RouterNat(
+      `${name}-nat`,
+      {
+        name: pulumi.interpolate`${args.environment}-${name}-nat`,
+        project: args.project,
+        region: args.region,
+        router: router.name,
+        natIpAllocateOption: "AUTO_ONLY",
+        sourceSubnetworkIpRangesToNat: "ALL_SUBNETWORKS_ALL_IP_RANGES",
+      },
+      childOpts
+    );
+
+    // 35.235.240.0/20 is the source range of Identity-Aware Proxy TCP forwarding (gcloud compute ssh --tunnel-through-iap).
+    new gcp.compute.Firewall(
+      `${name}-allow-iap-ssh`,
+      {
+        name: pulumi.interpolate`${args.environment}-${name}-allow-iap-ssh`,
+        project: args.project,
+        network: this.network.id,
+        direction: "INGRESS",
+        sourceRanges: ["35.235.240.0/20"],
+        allows: [{ protocol: "tcp", ports: ["22"] }],
       },
       childOpts
     );

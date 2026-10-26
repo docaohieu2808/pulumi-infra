@@ -2,17 +2,20 @@
   "name": "gcp-infra-policy",
   "version": "1.0.0",
   "description": "Pulumi CrossGuard policy pack for GCP infrastructure",
-  "main": "index.js",
+  "private": true,
+  "main": "index.ts",
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@pulumi/policy": "^1.0.0",
-    "@pulumi/pulumi": "^3.0.0"
+    "@pulumi/policy": "^1.21.0",
+    "@pulumi/pulumi": "^3.272.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }
