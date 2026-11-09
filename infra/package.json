@@ -9,8 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@pulumi/gcp": "^10.2.0",
-    "@pulumi/pulumi": "^3.272.0"
+    "@pulumi/gcp": "^10.2.2",
+    "@pulumi/pulumi": "^3.274.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
